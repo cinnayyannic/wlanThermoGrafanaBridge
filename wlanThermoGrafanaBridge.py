@@ -8,7 +8,50 @@ from datetime import datetime
 
 log = logging.getLogger('WlanThermoGrafanaBridge')
 
-def createPoints(message):
+def createSystemPoints(points, timestamp, message):
+    log.debug('Createing system points from json payload')
+
+    systemItem = {}
+    systemItem['measurement'] = "System"
+    systemItem['time'] = timestamp
+    systemItem['fields'] = message['system']
+
+    points.append(systemItem)
+
+def createChannelPoints(points, timestamp, message):
+    log.debug('Createing channel points from json payload')
+
+    for channel in message['channel']:
+        if channel['temp'] < 999: # 999 means channel not active
+            channelItem = {}
+
+            channelTags = {}
+            channelTags['channel'] = "Channel {}".format(channel['number'])
+            channelTags['alias'] = channel['name']
+
+            channelItem['measurement'] = "Channel {}".format(channel['number'])
+            channelItem['time'] = timestamp
+            channelItem['tags'] = channelTags
+            channelItem['fields'] = channel
+
+            points.append(channelItem)
+
+def createPitmasterPoints(points, timestamp, message):
+    log.debug('Createing pitmaster points from json payload')
+
+    pitmasterItem = {}
+    pitmasterItem['measurement'] = "Pitmaster"
+    pitmasterItem['time'] = timestamp
+    pitmasterItem['fields'] = message['pitmaster']
+
+    points.append(pitmasterItem)
+
+def addPointsToDatabase(influxDbClient, points):
+    if len(points) > 0:
+        influxDbClient.write_points(points=points, database='wlanthermo')
+        log.info('InfluxDB datapoints inserted')
+
+def createDataPoints(message):
     points = []
 
     try:
@@ -26,19 +69,9 @@ def createPoints(message):
 
         timestampStr = timestamp.astimezone().replace(microsecond=0).isoformat()
 
-        for channel in message['channel']:
-            if channel['temp'] < 999: # 999 means channel not active
-                channelItem = {}
-
-                channelTags = {}
-                channelTags['channel'] = "Channel {}".format(channel['number'])
-                channelTags['alias'] = channel['name']
-
-                channelItem['measurement'] = "Channel {}".format(channel['number'])
-                channelItem['time'] = timestampStr
-                channelItem['tags'] = channelTags
-                channelItem['fields'] = channel
-                points.append(channelItem)
+        createSystemPoints(points, timestampStr, message)
+        createChannelPoints(points, timestampStr, message)
+        createPitmasterPoints(points, timestampStr, message)
 
         log.debug('Created points from json payload')
     except Exception as ex:
@@ -66,17 +99,16 @@ def on_wlanthermo_data(client, influxDbClient, msg):
     decodedMessage = str(msg.payload.decode("utf-8","ignore"))
     log.debug(decodedMessage)
     messageJson = json.loads(decodedMessage)
-    points = createPoints(messageJson)
-
-    if len(points) > 0:
-        influxDbClient.write_points(points=points, database='wlanthermo')
-        log.info('InfluxDB datapoints inserted')
+    points = createDataPoints(messageJson)
+    addPointsToDatabase(influxDbClient, points)
 
 def on_wlanthermo_settings(client, influxDbClient, msg):
     decodedMessage = str(msg.payload.decode("utf-8","ignore"))
     log.info('Received wlanthermo mqtt settings message')
     log.debug(decodedMessage)
-
+    # messageJson = json.loads(decodedMessage)
+    # points = createSettingsPoints(messageJson)
+    # addPointsToDatabase(influxDbClient, points)
 
 def main(argv):
     mqtt_client_name = "wlanThermoGrafanaBridge"
