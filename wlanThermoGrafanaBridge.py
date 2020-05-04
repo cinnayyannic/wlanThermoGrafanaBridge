@@ -1,6 +1,5 @@
 import sys
 import argparse
-import copy
 import logging
 import json
 import paho.mqtt.client as mqtt
@@ -11,8 +10,7 @@ log = logging.getLogger('WlanThermoGrafanaBridge')
 
 class GlobalScope:
     influxDbClient = None
-    replicateSettings = None
-    lastSettingsPoints = []
+    wlanThermoHostname = None
 
 def getTimestampStr(unixTimestamp):
     timestamp = None
@@ -28,18 +26,6 @@ def getTimestampStr(unixTimestamp):
     timestampStr = timestamp.astimezone().replace(microsecond=0).isoformat()
 
     return timestampStr
-
-def prepareReplicatedPoints(points, dataUnixTimestamp):
-    newPoints = []
-    if len(points) > 0:
-        # deepcoy points to keep the original dataset
-        newPoints = copy.deepcopy(points)
-        # change timstamp from old points to new timestamps
-        timestampStr = getTimestampStr(dataUnixTimestamp)
-        for point in newPoints:
-            point['time'] = timestampStr
-
-    return newPoints
 
 def createDataSystemPoints(points, timestamp, message):
     log.debug('Creating data[system] points from json payload')
@@ -153,11 +139,13 @@ def on_wlanthermo_data(client, globalScope, msg):
         messageJson = json.loads(decodedMessage)
         points = createDataPoints(messageJson)
         addPointsToDatabase(globalScope.influxDbClient, points)
-        if globalScope.replicateSettings and len(globalScope.lastSettingsPoints) > 0:
-            dataUnixTimestamp = int(messageJson['system']['time'])
-            replicatedPoints = prepareReplicatedPoints(globalScope.lastSettingsPoints, dataUnixTimestamp)
-            addPointsToDatabase(globalScope.influxDbClient, replicatedPoints)
-            log.info('Replicated last settings object')
+        if globalScope.wlanThermoHostname:
+            log.info('Request settings object')
+            try:
+                client.publish('WLanThermo/{}/get/settings'.format(globalScope.wlanThermoHostname))
+            except Exception as ex:
+                log.warning('Failed to request settings object')
+                log.debug(ex)
     except Exception as ex:
         log.warning('Failed to parse json payload')
         log.debug(ex)
@@ -169,7 +157,6 @@ def on_wlanthermo_settings(client, globalScope, msg):
     try:
         messageJson = json.loads(decodedMessage)
         points = createSettingsPoints(messageJson)
-        globalScope.lastSettingsPoints = points
         addPointsToDatabase(globalScope.influxDbClient, points)
     except Exception as ex:
         log.warning('Failed to parse json payload')
@@ -189,7 +176,7 @@ def main(argv):
     parser.add_argument('--influxDbUsername', metavar='<influxDB username>', type=str, default='', help='InfluxDB username')
     parser.add_argument('--influxDbPassword', metavar='<influxDB password>', type=str, default='', help='InfluxDB password')
     parser.add_argument('--influxDbName', metavar='<influxDB name>', type=str, default='wlanthermo', help='InfluxDB database name')
-    parser.add_argument('--replicateSettings', default=False, action='store_true', help='Replicate last seetings object with each data measurement')
+    parser.add_argument('--wlanThermoHostname', metavar='<wlanThermo hostname>', type=str, default=None, help='WlanThermo hostname')
     parser.add_argument('--logLevel', metavar='<log level>', type=str, choices=['debug', 'info', 'warning', 'error'], default='info', help='Set Log level')
     parser.add_argument('--logFile', metavar='<log file filepath>', type=str, help='Logile output file')
 
@@ -209,7 +196,7 @@ def main(argv):
 
     logging.basicConfig(level=logLevels.get(args.logLevel, logging.INFO), filename=args.logFile)
 
-    globalScope.replicateSettings = args.replicateSettings
+    globalScope.wlanThermoHostname = args.wlanThermoHostname
 
     influxDbClient = InfluxDBClient(host=args.influxDbHost, port=args.influxDbPort,
         username=args.influxDbUsername, password=args.influxDbPassword, database=args.influxDbName)
