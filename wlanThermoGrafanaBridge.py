@@ -184,7 +184,7 @@ def main(argv):
         args = parser.parse_args()
     except Exception as ex:
         log.error('Failed to parse command line arguments')
-        log.error(ex)
+        log.debug(ex)
         exit(1)
 
     logLevels = {
@@ -216,7 +216,7 @@ def main(argv):
         log.info('Connect to InfluxDB successful')
     except Exception as ex:
         log.error('Connection to InfluxDB failed')
-        log.error(ex)
+        log.debug(ex)
         exit(1)
 
     try:
@@ -224,7 +224,7 @@ def main(argv):
         mqttClient.connect(args.mqttHost, args.mqttPort)
     except Exception as ex:
         log.error('Connection to mqtt broker failed')
-        log.error(ex)
+        log.debug(ex)
         exit(1)
 
     mqttClient.loop_forever()
