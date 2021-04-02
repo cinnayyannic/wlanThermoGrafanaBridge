@@ -28,7 +28,7 @@ def getTimestampStr(unixTimestamp):
     return timestampStr
 
 def createDataSystemPoints(points, timestamp, message):
-    log.debug('Creating data[system] points from json payload')
+    log.debug('Creating data [system] points from json payload')
 
     systemItem = {}
     systemItem['measurement'] = "System"
@@ -48,7 +48,7 @@ def createDataChannelPoints(points, timestamp, message):
             channelTags['channel'] = "Channel {}".format(channel['number'])
             channelTags['alias'] = channel['name']
 
-            channelItem['measurement'] = "Channel {}".format(channel['number'])
+            channelItem['measurement'] = "Temperature"
             channelItem['time'] = timestamp
             channelItem['tags'] = channelTags
             channelItem['fields'] = channel
